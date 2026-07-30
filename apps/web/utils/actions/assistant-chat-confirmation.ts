@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { SafeError } from "@/utils/error";
 import { createEmailProvider } from "@/utils/email/provider";
 import { getFormattedSenderAddress } from "@/utils/email/get-formatted-sender-address";
+import { appendAccountSignature } from "@/utils/email/append-account-signature";
 import { forwardMessage } from "@/utils/email/forward-message";
 import type { Logger } from "@/utils/logger";
 import prisma from "@/utils/prisma";
@@ -467,9 +468,13 @@ async function confirmPendingSendEmailAction({
     output.pendingAction.from ||
     (await getFormattedSenderAddress({ emailAccountId }));
 
-  const messageHtml = contentOverride
-    ? convertNewlinesToBr(escapeHtml(contentOverride))
-    : output.pendingAction.messageHtml;
+  const signature = await loadAccountSignature(emailAccountId);
+  const messageHtml = appendAccountSignature(
+    contentOverride
+      ? convertNewlinesToBr(escapeHtml(contentOverride))
+      : output.pendingAction.messageHtml,
+    signature,
+  );
   const sentAfter = new Date();
 
   const result = await emailProvider.sendEmailWithHtml({
@@ -520,11 +525,12 @@ async function confirmPendingReplyEmailAction({
   const from = await getFormattedSenderAddress({ emailAccountId });
   const replyOptions = from ? { from } : undefined;
   const sentAfter = new Date();
-  await emailProvider.replyToEmail(
-    message,
+  const signature = await loadAccountSignature(emailAccountId);
+  const replyContent = appendAccountSignature(
     contentOverride || output.pendingAction.content,
-    replyOptions,
+    signature,
   );
+  await emailProvider.replyToEmail(message, replyContent, replyOptions);
 
   const messageId = await resolveSentMessageId({
     emailProvider,
@@ -1868,6 +1874,16 @@ function applyReferenceThreadIdFallback<T extends { threadId?: string | null }>(
     ...message,
     threadId: fallbackThreadId,
   };
+}
+
+async function loadAccountSignature(
+  emailAccountId: string,
+): Promise<string | null> {
+  const account = await prisma.emailAccount.findUnique({
+    where: { id: emailAccountId },
+    select: { signature: true },
+  });
+  return account?.signature?.trim() || null;
 }
 
 function getPendingActionContentPatch(

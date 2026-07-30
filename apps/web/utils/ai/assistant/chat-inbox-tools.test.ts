@@ -112,6 +112,34 @@ describe("chat inbox tools", () => {
     });
   });
 
+  it("appends the account signature when preparing a send email", async () => {
+    prisma.emailAccount.findUnique.mockResolvedValue({
+      name: "Test User",
+      email: TEST_EMAIL,
+      signature: "<div><b>Self.</b></div>",
+    } as any);
+
+    const toolInstance = sendEmailTool({
+      email: TEST_EMAIL,
+      emailAccountId: "email-account-1",
+      provider: "google",
+      logger,
+    });
+
+    const result = await (toolInstance.execute as any)({
+      to: "recipient@example.com",
+      subject: "Hello",
+      messageHtml: "<p>Hi there</p>",
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      pendingAction: {
+        messageHtml: "<p>Hi there</p>\n\n<div><b>Self.</b></div>",
+      },
+    });
+  });
+
   it("rejects sendEmail input when recipient has no email address", async () => {
     const toolInstance = sendEmailTool({
       email: TEST_EMAIL,

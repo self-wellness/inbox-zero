@@ -16,6 +16,7 @@ import type { EmailProvider } from "@/utils/email/types";
 import type { ParsedMessage } from "@/utils/types";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import { getFormattedSenderAddress } from "@/utils/email/get-formatted-sender-address";
+import { appendAccountSignature } from "@/utils/email/append-account-signature";
 import { runWithBoundedConcurrency } from "@/utils/async";
 import { findNestedLabelMatches } from "@/utils/label/find-nested-label-matches";
 import { normalizeLabelName } from "@/utils/label/normalize-label-name";
@@ -1278,15 +1279,18 @@ export const sendEmailTool = ({
       }
 
       try {
-        const from =
-          (await getFormattedSenderAddress({
+        const [from, signature] = await Promise.all([
+          getFormattedSenderAddress({
             emailAccountId,
             fallbackEmail: email,
-          })) || email;
+          }),
+          loadAccountSignature(emailAccountId),
+        ]);
         return createPendingSendEmailOutput(
           parsedInput.data,
-          from || null,
+          from || email || null,
           provider,
+          signature,
         );
       } catch (error) {
         logger.error("Failed to prepare email from chat", { error });
@@ -1326,11 +1330,16 @@ export const replyEmailTool = ({
           provider,
           logger,
         });
-        const message = await emailProvider.getMessage(
-          parsedInput.data.messageId,
-        );
+        const [message, signature] = await Promise.all([
+          emailProvider.getMessage(parsedInput.data.messageId),
+          loadAccountSignature(emailAccountId),
+        ]);
 
-        return createPendingReplyEmailOutput(parsedInput.data, message);
+        return createPendingReplyEmailOutput(
+          parsedInput.data,
+          message,
+          signature,
+        );
       } catch (error) {
         logger.error("Failed to prepare reply from chat", { error });
         return { error: "Failed to prepare reply" };
@@ -1420,10 +1429,21 @@ async function listLabelNames({
 
 type PendingEmailActionType = "send_email" | "reply_email" | "forward_email";
 
+async function loadAccountSignature(
+  emailAccountId: string,
+): Promise<string | null> {
+  const account = await prisma.emailAccount.findUnique({
+    where: { id: emailAccountId },
+    select: { signature: true },
+  });
+  return account?.signature?.trim() || null;
+}
+
 function createPendingSendEmailOutput(
   input: z.infer<typeof sendEmailToolInputSchema>,
   from: string | null,
   provider: string,
+  signature: string | null,
 ) {
   return {
     success: true,
@@ -1436,7 +1456,7 @@ function createPendingSendEmailOutput(
       cc: input.cc || null,
       bcc: input.bcc || null,
       subject: input.subject,
-      messageHtml: input.messageHtml,
+      messageHtml: appendAccountSignature(input.messageHtml, signature),
       from,
     },
   };
@@ -1445,6 +1465,7 @@ function createPendingSendEmailOutput(
 function createPendingReplyEmailOutput(
   input: z.infer<typeof replyEmailToolInputSchema>,
   message: ParsedMessage,
+  signature: string | null,
 ) {
   return {
     success: true,
@@ -1453,7 +1474,7 @@ function createPendingReplyEmailOutput(
     confirmationState: "pending" as const,
     pendingAction: {
       messageId: input.messageId,
-      content: input.content,
+      content: appendAccountSignature(input.content, signature),
     },
     reference: {
       messageId: message.id,

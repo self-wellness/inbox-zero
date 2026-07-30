@@ -49,6 +49,7 @@ describe("buildDraftingContextMessage", () => {
     const message = buildDraftingContextMessage({
       about: "Prefer Tenerife for scheduling",
       writingStyle: "Short and direct",
+      signature: null,
       knowledge: [
         {
           title: "Pricing",
@@ -63,11 +64,23 @@ describe("buildDraftingContextMessage", () => {
     expect(message?.content).toContain("CHF 150");
   });
 
+  it("mentions auto-appended signature when configured", () => {
+    const message = buildDraftingContextMessage({
+      about: null,
+      writingStyle: null,
+      signature: "<div>Self.</div>",
+      knowledge: [],
+    });
+
+    expect(message?.content).toMatch(/signature.*appended automatically/i);
+  });
+
   it("returns null when drafting context is empty", () => {
     expect(
       buildDraftingContextMessage({
         about: null,
         writingStyle: "  ",
+        signature: null,
         knowledge: [],
       }),
     ).toBeNull();

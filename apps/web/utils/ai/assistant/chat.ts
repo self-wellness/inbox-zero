@@ -679,6 +679,7 @@ export function buildInboxSnapshotMessage(
 export type DraftingContext = {
   about: string | null;
   writingStyle: string | null;
+  signature: string | null;
   knowledge: { title: string; content: string }[];
 };
 
@@ -690,6 +691,7 @@ export async function loadDraftingContext(
     select: {
       about: true,
       writingStyle: true,
+      signature: true,
       knowledge: {
         select: { title: true, content: true },
         orderBy: { updatedAt: "desc" },
@@ -707,12 +709,18 @@ export function buildDraftingContextMessage(
   const sections: string[] = [];
   const about = draftingContext.about?.trim();
   const writingStyle = draftingContext.writingStyle?.trim();
+  const hasSignature = !!draftingContext.signature?.trim();
 
   if (about) {
     sections.push(`Personal instructions:\n${about}`);
   }
   if (writingStyle) {
     sections.push(`Writing style:\n${writingStyle}`);
+  }
+  if (hasSignature) {
+    sections.push(
+      "Configured email signature: present. It will be appended automatically after sendEmail/replyEmail bodies. Do not write any closing, sign-off, name, title, contact details, or signature block.",
+    );
   }
   if (draftingContext.knowledge.length > 0) {
     const entries = draftingContext.knowledge
