@@ -51,8 +51,12 @@ import { LlmUseCase } from "@/utils/llms/use-cases";
 export const maxDuration = 300;
 const ASSISTANT_CHAT_TOOL_BUDGET_MS = {
   web: 240_000,
-  messaging: 60_000,
+  // Telegram/Slack drafts often need search → read → compose; 60s cut tools mid-flight.
+  messaging: 120_000,
 } satisfies Record<"web" | "messaging", number>;
+
+const DRAFTING_KNOWLEDGE_ITEM_LIMIT = 30;
+const DRAFTING_KNOWLEDGE_CONTENT_MAX_CHARS = 2000;
 
 type AssistantChatOnStepFinish = NonNullable<
   Parameters<typeof toolCallAgentStream>[0]["onStepFinish"]
@@ -187,6 +191,15 @@ export async function aiProcessAssistantChat({
     : null;
   const inboxContextMessage = snapshotMessage ? [snapshotMessage] : [];
 
+  let draftingContextMessage: ModelMessage[] = [];
+  try {
+    const draftingContext = await loadDraftingContext(emailAccountId);
+    const draftingMessage = buildDraftingContextMessage(draftingContext);
+    if (draftingMessage) draftingContextMessage = [draftingMessage];
+  } catch (error) {
+    logger.warn("Failed to load drafting context for chat", { error });
+  }
+
   const hiddenContextMessage =
     context && context.type === "fix-rule"
       ? [
@@ -227,6 +240,7 @@ export async function aiProcessAssistantChat({
           },
         ]
       : []),
+    ...draftingContextMessage,
     ...freshRuleContextMessage,
     ...hiddenContextMessage,
   ];
@@ -598,6 +612,8 @@ function getEmailCapabilitiesPolicy({
     "- sendEmail, replyEmail, and forwardEmail prepare a pending action only. No email is sent yet.",
     "- These pending actions are app-side confirmations, not provider Drafts-folder saves.",
     '- When the user asks to "draft" an email or reply, use sendEmail, replyEmail, or forwardEmail. The pending-action confirmation flow acts as the draft.',
+    "- When composing sendEmail or replyEmail body content, use the hidden drafting context already provided in this request: personal instructions, writing style, and draft knowledge base Q&As. Prefer knowledge-base facts over inventing business details; if knowledge is missing for a factual claim, keep the draft cautious or ask one brief clarifying question instead of guessing.",
+    "- Match the user's writing style from drafting context. Prefer concise, specific, human replies over generic assistant-sounding language.",
     "- When replying to a thread, write the reply in the same language as the latest message in the thread.",
     '- When the user asks to forward an existing email, activate "forward" and use forwardEmail with a messageId from searchInbox results. Do not recreate forwards with sendEmail.',
     "- When the user asks to reply to an existing email, use replyEmail with a messageId from searchInbox results. Do not recreate replies with sendEmail.",
@@ -657,6 +673,69 @@ export function buildInboxSnapshotMessage(
       `[Automated inbox snapshot — not a message from the user] At conversation start: ${inboxStats.total} emails total, ${inboxStats.unread} unread. ` +
       "This snapshot is a starting point only — counts may have changed since then as new mail arrives or actions are taken. " +
       "Always call searchInbox to confirm the current state before answering questions about unread, new, or recent emails; do not rely on this number alone.",
+  };
+}
+
+export type DraftingContext = {
+  about: string | null;
+  writingStyle: string | null;
+  knowledge: { title: string; content: string }[];
+};
+
+export async function loadDraftingContext(
+  emailAccountId: string,
+): Promise<DraftingContext | null> {
+  return prisma.emailAccount.findUnique({
+    where: { id: emailAccountId },
+    select: {
+      about: true,
+      writingStyle: true,
+      knowledge: {
+        select: { title: true, content: true },
+        orderBy: { updatedAt: "desc" },
+        take: DRAFTING_KNOWLEDGE_ITEM_LIMIT,
+      },
+    },
+  });
+}
+
+export function buildDraftingContextMessage(
+  draftingContext: DraftingContext | null | undefined,
+): { role: "user"; content: string } | null {
+  if (!draftingContext) return null;
+
+  const sections: string[] = [];
+  const about = draftingContext.about?.trim();
+  const writingStyle = draftingContext.writingStyle?.trim();
+
+  if (about) {
+    sections.push(`Personal instructions:\n${about}`);
+  }
+  if (writingStyle) {
+    sections.push(`Writing style:\n${writingStyle}`);
+  }
+  if (draftingContext.knowledge.length > 0) {
+    const entries = draftingContext.knowledge
+      .map((item) => {
+        const content =
+          item.content.length > DRAFTING_KNOWLEDGE_CONTENT_MAX_CHARS
+            ? `${item.content.slice(0, DRAFTING_KNOWLEDGE_CONTENT_MAX_CHARS)}…`
+            : item.content;
+        return `### ${item.title}\n${content}`;
+      })
+      .join("\n\n");
+    sections.push(
+      `Draft knowledge base Q&As (reusable facts for email drafts):\n${entries}`,
+    );
+  }
+
+  if (sections.length === 0) return null;
+
+  return {
+    role: "user",
+    content:
+      "Hidden drafting context for this request (do not repeat verbatim unless the user asks; use it when drafting or answering with account facts):\n\n" +
+      sections.join("\n\n"),
   };
 }
 

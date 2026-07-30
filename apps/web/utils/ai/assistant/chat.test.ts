@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import prisma from "@/utils/__mocks__/prisma";
 import {
+  buildDraftingContextMessage,
   buildInboxSnapshotMessage,
   buildResolvedSystemPrompt,
   loadFreshRuleContext,
@@ -40,6 +41,54 @@ describe("buildInboxSnapshotMessage", () => {
   it("returns null when no inboxStats are available", () => {
     expect(buildInboxSnapshotMessage(null)).toBeNull();
     expect(buildInboxSnapshotMessage(undefined)).toBeNull();
+  });
+});
+
+describe("buildDraftingContextMessage", () => {
+  it("includes personal instructions, writing style, and knowledge base entries", () => {
+    const message = buildDraftingContextMessage({
+      about: "Prefer Tenerife for scheduling",
+      writingStyle: "Short and direct",
+      knowledge: [
+        {
+          title: "Pricing",
+          content: "Studio sessions start at CHF 150",
+        },
+      ],
+    });
+
+    expect(message?.content).toContain("Prefer Tenerife for scheduling");
+    expect(message?.content).toContain("Short and direct");
+    expect(message?.content).toContain("### Pricing");
+    expect(message?.content).toContain("CHF 150");
+  });
+
+  it("returns null when drafting context is empty", () => {
+    expect(
+      buildDraftingContextMessage({
+        about: null,
+        writingStyle: "  ",
+        knowledge: [],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("buildResolvedSystemPrompt drafting guidance", () => {
+  it("requires using drafting context when composing emails", () => {
+    const prompt = buildResolvedSystemPrompt({
+      emailSendToolsEnabled: true,
+      draftReplyActionsEnabled: true,
+      webhookActionsEnabled: true,
+      provider: "google",
+      responseSurface: "messaging",
+      messagingPlatform: "telegram",
+      userTimezone: "UTC",
+      currentTimestamp: "2026-05-12T00:00:00.000Z",
+    });
+
+    expect(prompt).toMatch(/draft knowledge base/i);
+    expect(prompt).toMatch(/writing style/i);
   });
 });
 
