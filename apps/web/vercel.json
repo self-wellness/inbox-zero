@@ -89,7 +89,7 @@
   "crons": [
     {
       "path": "/api/cron/scheduled-actions",
-      "schedule": "* * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/watch/all",
