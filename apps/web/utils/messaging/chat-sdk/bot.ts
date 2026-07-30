@@ -1177,7 +1177,67 @@ function getUiMessageText(message: UIMessage): string {
     .join("\n")
     .trim();
 
-  return text || "Done.";
+  if (text) return text;
+
+  // Gemini (and some other models) sometimes finish a tool loop without a
+  // final text part. Prefer a short tool-based summary over a bare "Done."
+  const toolSummary = summarizeMessagingToolParts(message.parts || []);
+  return toolSummary || "Done.";
+}
+
+function summarizeMessagingToolParts(parts: unknown[]): string | null {
+  const summaries: string[] = [];
+
+  for (const part of parts) {
+    if (!part || typeof part !== "object") continue;
+    const typed = part as {
+      type?: unknown;
+      state?: unknown;
+      output?: unknown;
+    };
+    if (typeof typed.type !== "string" || !typed.type.startsWith("tool-")) {
+      continue;
+    }
+    if (typed.state !== "output-available") continue;
+
+    const toolName = typed.type.slice("tool-".length);
+    const output = typed.output;
+    if (!output || typeof output !== "object") {
+      summaries.push(`Ran ${toolName}.`);
+      continue;
+    }
+
+    const record = output as Record<string, unknown>;
+    if (typeof record.summary === "string" && record.summary.trim()) {
+      summaries.push(record.summary.trim());
+      continue;
+    }
+    if (
+      record.summary &&
+      typeof record.summary === "object" &&
+      typeof (record.summary as { total?: unknown }).total === "number"
+    ) {
+      const summary = record.summary as {
+        total: number;
+        unread?: number;
+      };
+      const unread =
+        typeof summary.unread === "number"
+          ? ` (${summary.unread} unread)`
+          : "";
+      summaries.push(`Found ${summary.total} emails${unread}.`);
+      continue;
+    }
+    if (typeof record.message === "string" && record.message.trim()) {
+      summaries.push(record.message.trim());
+      continue;
+    }
+
+    summaries.push(`Ran ${toolName}.`);
+  }
+
+  if (!summaries.length) return null;
+  return summaries.join("\n");
 }
 
 function getPendingEmailToolPart(
