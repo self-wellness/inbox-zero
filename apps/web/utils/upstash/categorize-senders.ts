@@ -40,7 +40,8 @@ export async function publishToAiCategorizeSendersQueue(
     chunks.map((senderChunk) =>
       publishToQstashQueue({
         queueName,
-        parallelism: 3, // Allow up to 3 concurrent jobs from this queue
+        // Upstash free/basic QStash caps queue maxParallelism at 2.
+        parallelism: 2,
         path: "/api/user/categorize/senders/batch",
         body: {
           emailAccountId: body.emailAccountId,
