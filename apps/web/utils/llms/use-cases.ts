@@ -55,7 +55,7 @@ export const LLM_USE_CASE_MODEL_TYPES = {
   [LlmUseCase.CategorizeSendersBulk]: "economy",
   [LlmUseCase.ChatCompaction]: "economy",
   [LlmUseCase.ChatMemoryExtraction]: "economy",
-  [LlmUseCase.CleanInbox]: "default",
+  [LlmUseCase.CleanInbox]: "economy",
   [LlmUseCase.ComposeAutocomplete]: "default",
   [LlmUseCase.DetectRecurringPattern]: "chat",
   [LlmUseCase.DigestEmailSummary]: "economy",
