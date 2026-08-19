@@ -38,6 +38,10 @@ import {
 import { saveMemoryTool, searchMemoriesTool } from "./chat-memory-tools";
 import { getCalendarEventsTool } from "./chat-calendar-tools";
 import type { MessagingPlatform } from "@/utils/messaging/platforms";
+import {
+  buildOpenDraftCardsContextMessage,
+  type OpenMessagingDraftCard,
+} from "@/utils/messaging/open-draft-chat-context";
 import type { SerializedMatchReason } from "@/utils/ai/choose-rule/types";
 import {
   buildFreshRuleContextMessage,
@@ -76,6 +80,7 @@ export async function aiProcessAssistantChat({
   chatHasHistory,
   memories,
   inboxStats,
+  openDraftCards,
   responseSurface = "web",
   messagingPlatform,
   onRulesStateExposed,
@@ -93,6 +98,7 @@ export async function aiProcessAssistantChat({
   chatHasHistory?: boolean;
   memories?: { content: string; date: string }[];
   inboxStats?: { total: number; unread: number } | null;
+  openDraftCards?: OpenMessagingDraftCard[];
   responseSurface?: "web" | "messaging";
   messagingPlatform?: MessagingPlatform;
   onRulesStateExposed?: (rulesRevision: number) => void;
@@ -200,6 +206,13 @@ export async function aiProcessAssistantChat({
     logger.warn("Failed to load drafting context for chat", { error });
   }
 
+  const openDraftCardMessage = buildOpenDraftCardsContextMessage(
+    openDraftCards ?? [],
+  );
+  const openDraftCardsContext = openDraftCardMessage
+    ? [openDraftCardMessage]
+    : [];
+
   const hiddenContextMessage =
     context && context.type === "fix-rule"
       ? [
@@ -243,6 +256,7 @@ export async function aiProcessAssistantChat({
     ...draftingContextMessage,
     ...freshRuleContextMessage,
     ...hiddenContextMessage,
+    ...openDraftCardsContext,
   ];
 
   const { messages: cacheOptimizedMessages, stablePrefixEndIndex } =
@@ -627,7 +641,12 @@ function getEmailCapabilitiesPolicy({
 
   const responseSurfaceLines =
     responseSurface === "messaging"
-      ? [`- A Send confirmation button is provided in ${threadContext}.`]
+      ? [
+          `- A Send confirmation button is provided in ${threadContext}.`,
+          "- Open chat draft cards are listed in hidden context. Those are the emails the user is looking at. Chat history may mention older threads.",
+          '- If the user says "this", "the draft", "change this", or similar without naming another person, use the most recently posted open draft card\'s messageId for replyEmail. Never reuse a messageId from earlier chat turns unless the user names that recipient.',
+          "- When the user gives feedback on an open draft card, apply only the requested change. Keep the greeting, the rest of the wording, the sign-off, and the signature.",
+        ]
       : [];
 
   const emailSendingLines = emailSendToolsEnabled

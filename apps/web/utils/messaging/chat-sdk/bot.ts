@@ -38,6 +38,8 @@ import { getActionDisplay } from "@/utils/action-display";
 import { confirmAssistantEmailActionForAccount } from "@/utils/actions/assistant-chat-confirmation";
 import type { AssistantPendingEmailActionType } from "@/utils/actions/assistant-chat.validation";
 import { aiProcessAssistantChat } from "@/utils/ai/assistant/chat";
+import { loadOpenMessagingDraftCards } from "@/utils/messaging/open-draft-chat-context";
+import { tryReviseOpenMessagingDraftFromChat } from "@/utils/messaging/revise-open-draft-from-chat";
 import { getRecentChatMemories } from "@/utils/ai/assistant/get-recent-chat-memories";
 import { getInboxStatsForChatContext } from "@/utils/ai/assistant/get-inbox-stats-for-chat-context";
 import {
@@ -684,6 +686,37 @@ async function processMessagingAssistantMessage({
       ...context.threadLogContext,
     });
 
+    try {
+      const revisionAck = await tryReviseOpenMessagingDraftFromChat({
+        emailAccount: emailAccountUser,
+        messageText: context.messageText,
+        logger: threadLogger,
+      });
+      if (revisionAck) {
+        await prisma.chatMessage.create({
+          data: {
+            id: assistantMessageId,
+            chat: { connect: { id: chat.id } },
+            role: "assistant",
+            parts: [
+              { type: "text", text: revisionAck },
+            ] as Prisma.InputJsonValue,
+          },
+        });
+        await thread.post(
+          getMessagingAiGeneratedPostPayload({
+            provider: context.provider,
+            text: revisionAck,
+          }),
+        );
+        return true;
+      }
+    } catch (error) {
+      threadLogger.warn("Failed to revise open messaging draft from chat", {
+        error,
+      });
+    }
+
     const inboxStatsPromise = getInboxStatsForChatContext({
       emailAccountId: context.emailAccountId,
       provider: emailAccountUser.account.provider,
@@ -720,6 +753,9 @@ async function processMessagingAssistantMessage({
           existingMessages.length > 0 || chat.compactions.length > 0,
         memories: await memoriesPromise,
         inboxStats,
+        openDraftCards: await loadOpenMessagingDraftCards(
+          context.emailAccountId,
+        ),
         responseSurface: "messaging",
         messagingPlatform: context.provider,
         onRulesStateExposed: (rulesRevision) => {
@@ -1222,9 +1258,7 @@ function summarizeMessagingToolParts(parts: unknown[]): string | null {
         unread?: number;
       };
       const unread =
-        typeof summary.unread === "number"
-          ? ` (${summary.unread} unread)`
-          : "";
+        typeof summary.unread === "number" ? ` (${summary.unread} unread)` : "";
       summaries.push(`Found ${summary.total} emails${unread}.`);
       continue;
     }
