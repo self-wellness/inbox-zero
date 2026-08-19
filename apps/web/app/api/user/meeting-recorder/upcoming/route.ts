@@ -66,6 +66,7 @@ async function getData({
       calendarEventId: { in: videoEvents.map((event) => event.id) },
     },
     select: {
+      id: true,
       calendarEventId: true,
       joinOverride: true,
       recording: { select: { status: true, failureReason: true } },
@@ -76,8 +77,7 @@ async function getData({
     meetings.map((meeting) => [meeting.calendarEventId, meeting]),
   );
 
-  const rule =
-    emailAccount?.meetingRecorderJoinRule ?? MeetingJoinRule.EXTERNAL_ONLY;
+  const rule = emailAccount?.meetingRecorderJoinRule ?? MeetingJoinRule.ALL;
 
   return {
     hasAccess,
@@ -86,8 +86,10 @@ async function getData({
 
       return {
         id: event.id,
+        meetingId: meeting?.id,
         title: event.title,
         startTime: event.startTime,
+        endTime: event.endTime,
         hasCancellableBooking:
           !!meeting?.recording &&
           CANCELLABLE_STATUSES.includes(meeting.recording.status),

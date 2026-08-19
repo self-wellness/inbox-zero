@@ -11,7 +11,11 @@ import {
 } from "@/utils/actions/unsubscriber";
 import { decrementUnsubscribeCreditAction } from "@/utils/actions/premium";
 import { NewsletterStatus } from "@/generated/prisma/enums";
-import { assertActionSucceeded, captureException } from "@/utils/error";
+import {
+  assertActionSucceeded,
+  captureException,
+  EmailProviderRateLimitError,
+} from "@/utils/error";
 import {
   addToArchiveSenderThreadQueue,
   useArchiveSenderQueueActions,
@@ -43,6 +47,13 @@ type MutateFn = (
 ) => Promise<unknown>;
 
 type QueueArchiveSendersFn = (params: { senders: string[] }) => Promise<number>;
+
+type BulkOperationResult = {
+  stoppedByRateLimit: boolean;
+  total: number;
+  successCount: number;
+  failureCount: number;
+};
 
 function pluralize(count: number, singular: string): string {
   return count === 1 ? singular : `${singular}s`;
@@ -88,6 +99,7 @@ async function executeBulkOperation<T extends Row>({
   successMessage,
   errorMessage,
   onComplete,
+  onCompleteRevalidates,
   onSuccess,
 }: {
   items: T[];
@@ -101,8 +113,9 @@ async function executeBulkOperation<T extends Row>({
   successMessage: string;
   errorMessage: string;
   onComplete?: () => Promise<unknown>;
+  onCompleteRevalidates?: boolean;
   onSuccess?: () => void;
-}) {
+}): Promise<BulkOperationResult> {
   const total = items.length;
   const toastId = toast.loading(
     `${loadingMessage} ${total} ${pluralize(total, "sender")}...`,
@@ -110,7 +123,8 @@ async function executeBulkOperation<T extends Row>({
   );
 
   let completed = 0;
-  const failures: Error[] = [];
+  let failureCount = 0;
+  let rateLimitError: EmailProviderRateLimitError | undefined;
 
   const updateItemOptimistically = (item: T) => {
     const optimisticStatus = getNewStatus ? getNewStatus(item) : newStatus;
@@ -134,14 +148,18 @@ async function executeBulkOperation<T extends Row>({
   };
 
   for (const item of items) {
-    onDeselectItem?.(item.name);
     updateItemOptimistically(item);
 
     try {
       await processItem(item);
+      onDeselectItem?.(item.name);
     } catch (error) {
-      failures.push(error as Error);
-      captureException(error);
+      failureCount++;
+      if (error instanceof EmailProviderRateLimitError) {
+        rateLimitError = error;
+      } else {
+        captureException(error);
+      }
     } finally {
       completed++;
       toast.loading(
@@ -152,23 +170,42 @@ async function executeBulkOperation<T extends Row>({
         },
       );
     }
+
+    if (rateLimitError) break;
   }
 
+  let didRevalidateOnComplete = false;
   if (onComplete) {
     try {
       await onComplete();
+      didRevalidateOnComplete = onCompleteRevalidates === true;
     } catch (error) {
       captureException(error);
     }
   }
 
-  if (failures.length > 0) {
+  if (rateLimitError) {
+    if (!didRevalidateOnComplete) await mutate();
+    const successful = completed - failureCount;
+    toast.error(rateLimitError.message, {
+      id: toastId,
+      description: `${successful} of ${total} completed; stopped to avoid more requests`,
+    });
+    return {
+      stoppedByRateLimit: true,
+      total,
+      successCount: successful,
+      failureCount,
+    };
+  }
+
+  if (failureCount > 0) {
     await mutate();
     toast.error(
-      `${errorMessage} ${failures.length} ${pluralize(failures.length, "sender")}`,
+      `${errorMessage} ${failureCount} ${pluralize(failureCount, "sender")}`,
       {
         id: toastId,
-        description: `${total - failures.length} of ${total} succeeded`,
+        description: `${total - failureCount} of ${total} succeeded`,
       },
     );
   } else {
@@ -178,6 +215,13 @@ async function executeBulkOperation<T extends Row>({
     });
     onSuccess?.();
   }
+
+  return {
+    stoppedByRateLimit: false,
+    total,
+    successCount: total - failureCount,
+    failureCount,
+  };
 }
 
 async function unsubscribeAndArchive({
@@ -328,8 +372,12 @@ export function useUnsubscribe<T extends Row>({
         }
       }
     } catch (error) {
-      captureException(error);
-      toast.error(`Could not unsubscribe from ${item.name}`);
+      if (error instanceof EmailProviderRateLimitError) {
+        toast.error(error.message);
+      } else {
+        captureException(error);
+        toast.error(`Could not unsubscribe from ${item.name}`);
+      }
     } finally {
       setUnsubscribeLoading(false);
     }
@@ -382,7 +430,14 @@ export function useBulkUnsubscribe<T extends Row>({
 
   const onBulkUnsubscribe = useCallback(
     async (items: T[]) => {
-      if (!hasUnsubscribeAccess) return;
+      if (!hasUnsubscribeAccess) {
+        return {
+          stoppedByRateLimit: false,
+          total: items.length,
+          successCount: 0,
+          failureCount: items.length,
+        };
+      }
       posthog.capture("Clicked Bulk Unsubscribe");
       analytics.captureAction("bulk_unsubscribe_started", {
         item_count: items.length,
@@ -391,7 +446,7 @@ export function useBulkUnsubscribe<T extends Row>({
 
       const messages = getBulkUnsubscribeMessages(items);
 
-      await executeBulkOperation({
+      const result = await executeBulkOperation({
         items,
         mutate,
         filter,
@@ -428,12 +483,18 @@ export function useBulkUnsubscribe<T extends Row>({
           await mutate();
           await refreshPremium(refetchPremium);
         },
+        onCompleteRevalidates: true,
         onSuccess: () => onSuccess?.(items),
       });
+      if (result.stoppedByRateLimit) return;
+
       analytics.captureAction("bulk_unsubscribe_completed", {
         item_count: items.length,
+        success_count: result.successCount,
+        failure_count: result.failureCount,
         filter,
       });
+      return result;
     },
     [
       hasUnsubscribeAccess,
@@ -1114,7 +1175,7 @@ function didAutomaticUnsubscribeSucceed(
   result: Awaited<ReturnType<typeof unsubscribeSenderAction>>,
 ) {
   if (result?.serverError) {
-    throw new Error(result.serverError);
+    assertActionSucceeded({ serverError: result.serverError });
   }
 
   return result?.data?.unsubscribe.success === true;

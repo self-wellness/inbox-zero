@@ -79,7 +79,7 @@ export default function Components() {
     "alice@example.com",
     "bob@example.com",
   ]);
-  const [joinRule, setJoinRule] = useState("external");
+  const [joinRule, setJoinRule] = useState("all");
   const [notifyByEmail, setNotifyByEmail] = useState(true);
   return (
     <Container>
@@ -893,9 +893,9 @@ export default function Components() {
         <div>
           <div className="underline">RadioCardGroup</div>
           <MutedText className="mt-2">
-            A one-of-N choice where each option needs a sentence of explanation.
-            Prefer this over a Select when the descriptions matter to the
-            decision, such as a setup step. Native radios, so arrow keys work
+            A one-of-N choice where the options should all be visible rather
+            than hidden behind a Select. Labels only, by design: a description
+            under every option reads as noise. Native radios, so arrow keys work
             and the group is a single tab stop.
           </MutedText>
           <div className="mt-4 max-w-lg space-y-4">
@@ -905,24 +905,12 @@ export default function Components() {
               value={joinRule}
               onChange={setJoinRule}
               options={[
+                { value: "all", label: "Every call with a video link" },
                 {
                   value: "external",
-                  label: "Meetings with guests",
-                  description:
-                    "Join calls that include someone outside your company",
-                  badge: "Recommended",
+                  label: "Only calls with people outside my company",
                 },
-                {
-                  value: "all",
-                  label: "All meetings",
-                  description:
-                    "Join every call on your calendar with a video link",
-                },
-                {
-                  value: "off",
-                  label: "Nothing automatic",
-                  description: "Only join calls you turn on one by one",
-                },
+                { value: "off", label: "Only the ones I turn on myself" },
               ]}
             />
 
@@ -935,11 +923,7 @@ export default function Components() {
                 onChange={() => {}}
                 disabled
                 options={[
-                  {
-                    value: "a",
-                    label: "Selected",
-                    description: "With a description",
-                  },
+                  { value: "a", label: "Selected" },
                   { value: "b", label: "Not selected" },
                 ]}
               />

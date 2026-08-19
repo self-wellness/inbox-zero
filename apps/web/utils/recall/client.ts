@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { env } from "@/env";
 import type { Logger } from "@/utils/logger";
 import {
@@ -28,6 +30,10 @@ export function isRecallConfigured(): boolean {
 
 const DEFAULT_RECALL_REGION = "us-west-2";
 
+// Use participant presence to end successful recordings; a calendar duration
+// is not the call's actual lifetime.
+const EVERYONE_LEFT_TIMEOUT_SECONDS = 2;
+
 // Overridden only to point at the local emulator, same as GOOGLE_BASE_URL.
 function getRecallApiBase(): string {
   if (env.RECALL_BASE_URL) {
@@ -57,12 +63,22 @@ export class RecallBotProvider implements MeetingBotProvider {
   }
 
   async scheduleBot({
+    botName = MEETING_BOT_DISPLAY_NAME,
     meetingUrl,
     joinAt,
   }: {
+    botName?: string;
     meetingUrl: string;
     joinAt: Date;
   }): Promise<{ externalBotId: string }> {
+    const cameraImage = await getMeetingBotCameraImage().catch((error) => {
+      this.logger.warn(
+        "Meeting bot camera image is unavailable; scheduling without video",
+        { error },
+      );
+      return null;
+    });
+
     // No transcript config here on purpose: `recallai_async` is not a
     // bot-creation provider. Async transcription is requested per recording,
     // after `recording.done`, via createTranscript below.
@@ -71,8 +87,19 @@ export class RecallBotProvider implements MeetingBotProvider {
       method: "POST",
       body: {
         meeting_url: meetingUrl,
-        bot_name: MEETING_BOT_DISPLAY_NAME,
+        bot_name: botName,
         join_at: joinAt.toISOString(),
+        automatic_leave: {
+          everyone_left_timeout: { timeout: EVERYONE_LEFT_TIMEOUT_SECONDS },
+        },
+        ...(cameraImage && {
+          automatic_video_output: {
+            in_call_recording: {
+              kind: "jpeg",
+              b64_data: cameraImage,
+            },
+          },
+        }),
       },
     });
 
@@ -82,12 +109,17 @@ export class RecallBotProvider implements MeetingBotProvider {
 
   async updateBot(
     externalBotId: string,
-    { joinAt, meetingUrl }: { joinAt?: Date; meetingUrl?: string },
+    {
+      botName,
+      joinAt,
+      meetingUrl,
+    }: { botName: string; joinAt?: Date; meetingUrl?: string },
   ): Promise<{ externalBotId: string }> {
     try {
       await this.request(`/bot/${externalBotId}/`, {
         method: "PATCH",
         body: {
+          ...(botName && { bot_name: botName }),
           ...(joinAt && { join_at: joinAt.toISOString() }),
           ...(meetingUrl && { meeting_url: meetingUrl }),
         },
@@ -105,7 +137,7 @@ export class RecallBotProvider implements MeetingBotProvider {
       }
 
       await this.cancelBot(externalBotId);
-      return this.scheduleBot({ meetingUrl, joinAt });
+      return this.scheduleBot({ botName, meetingUrl, joinAt });
     }
   }
 
@@ -267,4 +299,60 @@ function getRecallErrorCode(error: RecallApiError): string | null {
 function isPermanent(status: number): boolean {
   if (status === 408 || status === 425 || status === 429) return false;
   return status >= 400 && status < 500;
+}
+
+let meetingBotCameraImagePromise: Promise<string> | undefined;
+
+function getMeetingBotCameraImage(): Promise<string> {
+  meetingBotCameraImagePromise ??= readMeetingBotCameraImage().catch(
+    (error) => {
+      meetingBotCameraImagePromise = undefined;
+      throw error;
+    },
+  );
+  return meetingBotCameraImagePromise;
+}
+
+async function readMeetingBotCameraImage(): Promise<string> {
+  try {
+    return await readFile(
+      join(
+        process.cwd(),
+        "public",
+        "images",
+        "meetings",
+        "inbox-zero-notetaker.jpg",
+      ),
+      "base64",
+    );
+  } catch (error) {
+    if (!isMissingFile(error)) throw error;
+  }
+
+  try {
+    return await readFile(
+      join(
+        process.cwd(),
+        "apps",
+        "web",
+        "public",
+        "images",
+        "meetings",
+        "inbox-zero-notetaker.jpg",
+      ),
+      "base64",
+    );
+  } catch (error) {
+    if (!isMissingFile(error)) throw error;
+  }
+
+  throw new Error("Recall meeting bot camera image is missing");
+}
+
+function isMissingFile(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
 }

@@ -1,5 +1,6 @@
 // Product-facing name of the bot that appears in the participant list.
 export const MEETING_BOT_DISPLAY_NAME = "Inbox Zero Notetaker";
+const MAX_MEETING_BOT_DISPLAY_NAME_LENGTH = 100;
 
 interface TranscriptUtterance {
   email?: string;
@@ -41,13 +42,44 @@ export interface MeetingBotProvider {
   /** Tolerant: media that is already gone is not an error. */
   deleteMedia(externalBotId: string): Promise<void>;
   fetchTranscript(externalTranscriptId: string): Promise<NormalizedTranscript>;
+  /**
+   * The bot stays for the life of the call, not the calendar slot: it must
+   * leave when the participants do, not at a scheduled end time.
+   */
   scheduleBot(params: {
+    botName?: string;
     meetingUrl: string;
     joinAt: Date;
   }): Promise<{ externalBotId: string }>;
   /** Updates a bot that has been scheduled but has not started joining yet. */
   updateBot(
     externalBotId: string,
-    params: { joinAt?: Date; meetingUrl?: string },
+    params: { botName: string; joinAt?: Date; meetingUrl?: string },
   ): Promise<{ externalBotId: string }>;
+}
+
+export function getMeetingBotDisplayName({
+  ownerName,
+  ownerEmail,
+}: {
+  ownerName: string | null;
+  ownerEmail: string;
+}): string {
+  const firstName = ownerName?.trim().split(/\s+/)[0];
+  const ownerIdentifier = firstName || ownerEmail;
+  const suffix = `'s ${MEETING_BOT_DISPLAY_NAME}`;
+  const maxOwnerIdentifierLength =
+    MAX_MEETING_BOT_DISPLAY_NAME_LENGTH - suffix.length;
+
+  const truncatedOwnerIdentifier = ownerIdentifier.slice(
+    0,
+    maxOwnerIdentifierLength,
+  );
+  const unicodeSafeOwnerIdentifier = /[\uD800-\uDBFF]$/.test(
+    truncatedOwnerIdentifier,
+  )
+    ? truncatedOwnerIdentifier.slice(0, -1)
+    : truncatedOwnerIdentifier;
+
+  return `${unicodeSafeOwnerIdentifier}${suffix}`;
 }

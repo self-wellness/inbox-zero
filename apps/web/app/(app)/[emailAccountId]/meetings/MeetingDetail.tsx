@@ -3,7 +3,6 @@
 import { useAccount } from "@/providers/EmailAccountProvider";
 import type { ReactNode } from "react";
 import { format } from "date-fns";
-import Link from "next/link";
 import { ChevronDownIcon, MailPlusIcon, TextQuoteIcon } from "lucide-react";
 import { LoadingContent } from "@/components/LoadingContent";
 import { MutedText } from "@/components/Typography";
@@ -100,8 +99,8 @@ export function MeetingDetail({
 
           {state === "processing" && (
             <MutedText>
-              The recording is in progress or being processed. Notes will appear
-              here when they are ready.
+              The recording is being processed. Notes will appear here when they
+              are ready.
             </MutedText>
           )}
 
@@ -171,16 +170,20 @@ export function MeetingDetail({
                   attendees. Nothing was sent for you.
                 </MutedText>
                 <Button asChild variant="outline" size="sm">
-                  <Link href={`/${emailAccountId}/mail?type=draft`}>
+                  <a
+                    href={getFollowUpDraftUrl(data.id, emailAccountId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     Go to drafts
-                  </Link>
+                  </a>
                 </Button>
               </CardContent>
             </CardBlue>
           )}
 
           {!!transcript?.length && (
-            <Collapsible>
+            <Collapsible defaultOpen>
               <Card>
                 <CollapsibleTrigger className="group flex w-full items-center gap-3 p-4 text-left hover:bg-accent/50">
                   <TextQuoteIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -254,6 +257,10 @@ function SummaryList({ title, items }: { title: string; items: string[] }) {
       </ul>
     </div>
   );
+}
+
+function getFollowUpDraftUrl(meetingId: string, emailAccountId: string) {
+  return `/api/user/meeting-recorder/meetings/${encodeURIComponent(meetingId)}/draft?emailAccountId=${encodeURIComponent(emailAccountId)}`;
 }
 
 function formatMeetingTimeRange(
