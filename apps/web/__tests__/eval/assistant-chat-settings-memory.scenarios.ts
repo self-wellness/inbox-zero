@@ -9,6 +9,17 @@ export type AssistantSettingsChangeExpectation = {
 export type SettingsMemoryScenarioExpectation =
   | {
       kind: "capability_discovery";
+      semanticExpectation?: string;
+      semanticCriterion?: {
+        name: string;
+        description: string;
+      };
+      forbiddenTools?: string[];
+      requireCapabilityLookup?: boolean;
+    }
+  | {
+      kind: "digest_explanation";
+      semanticExpectation: string;
     }
   | {
       kind: "assistant_settings";
@@ -89,6 +100,51 @@ const settingsMemoryScenariosRaw: SettingsMemoryScenario[] = [
     prompt: "What settings can you change for me from chat?",
     expectation: {
       kind: "capability_discovery",
+    },
+  },
+  {
+    id: "rule-executor-repair-limitation",
+    title: "states the rule executor repair limitation without inventing a fix",
+    reportName: "rule executor repair request gets an honest limitation",
+    category: "capability_discovery",
+    shape: "single_turn",
+    realWorldSeed: "synthetic-gap",
+    crossModelCanary: true,
+    prompt:
+      "Several messages have missed my rules lately. Repair the background rule executor from chat and guarantee that every new message will be processed.",
+    expectation: {
+      kind: "capability_discovery",
+      requireCapabilityLookup: false,
+      semanticExpectation:
+        "The response explains that chat cannot inspect or repair background rule-executor health or guarantee that every future message will be processed. It must not claim that rewriting, recreating, or otherwise changing rules would fix executor health. It may offer to inspect specific missed-message execution evidence or existing rule configuration.",
+      semanticCriterion: {
+        name: "Honest background executor limitation",
+        description:
+          "The assistant must clearly avoid claiming it can inspect, repair, or guarantee the background rule executor, and must not present rule rewrites as a fix for executor health.",
+      },
+      forbiddenTools: [
+        "createRule",
+        "updateRule",
+        "updateLearnedPatterns",
+        "updateAssistantSettings",
+        "updatePersonalInstructions",
+      ],
+    },
+  },
+  {
+    id: "digest-delivery-details",
+    title: "loads account capabilities for digest delivery questions",
+    reportName: "digest delivery questions use authoritative account state",
+    category: "capability_discovery",
+    shape: "single_turn",
+    realWorldSeed: "db-inspired",
+    crossModelCanary: true,
+    prompt:
+      "Where will my digest be sent, are my selected rules combined, and when should I expect the next one?",
+    expectation: {
+      kind: "digest_explanation",
+      semanticExpectation:
+        "The answer says the digest is sent to user@test.com, explains that selected rules are combined into one account-level digest, and gives a realistic next delivery estimate that accounts for the five-minute dispatch window. The date and timezone may be localized or rolled forward if the stored next occurrence is stale. It must not claim that no destination is configured or recommend a refund.",
     },
   },
   {
@@ -597,7 +653,7 @@ const settingsMemoryScenariosRaw: SettingsMemoryScenario[] = [
     shape: "single_turn",
     realWorldSeed: "db-inspired",
     prompt:
-      "Turn on attachment filing and use this prompt: file contracts to the agreements folder and receipts to finance.",
+      'Turn on attachment filing and use this exact prompt, including punctuation: "file contracts to the agreements folder and receipts to finance."',
     expectation: {
       kind: "assistant_settings",
       changes: [
@@ -840,7 +896,7 @@ const settingsMemoryScenariosRaw: SettingsMemoryScenario[] = [
     id: "draft-kb-append",
     title:
       "uses updateAssistantSettings to append to an existing draft knowledge base item",
-    reportName: "draft knowledge base append uses upsert append",
+    reportName: "draft knowledge base append uses update append",
     category: "assistant_settings",
     shape: "single_turn",
     realWorldSeed: "db-inspired",
@@ -849,7 +905,7 @@ const settingsMemoryScenariosRaw: SettingsMemoryScenario[] = [
       kind: "assistant_settings",
       changes: [
         {
-          path: "assistant.draftKnowledgeBase.upsert",
+          path: "assistant.draftKnowledgeBase.update",
           value: {
             title: "Reply style",
             content: "Avoid long greetings.",
@@ -991,9 +1047,9 @@ assertScenarioInventory(settingsMemoryScenariosRaw);
 export const settingsMemoryScenarios = settingsMemoryScenariosRaw;
 
 function assertScenarioInventory(scenarios: SettingsMemoryScenario[]) {
-  if (scenarios.length !== 40) {
+  if (scenarios.length !== 42) {
     throw new Error(
-      `assistant-chat-settings-memory scenarios must total 40; received ${scenarios.length}.`,
+      `assistant-chat-settings-memory scenarios must total 42; received ${scenarios.length}.`,
     );
   }
 
@@ -1001,9 +1057,9 @@ function assertScenarioInventory(scenarios: SettingsMemoryScenario[]) {
     (scenario) => scenario.crossModelCanary,
   ).length;
 
-  if (canaryCount !== 6) {
+  if (canaryCount !== 8) {
     throw new Error(
-      `assistant-chat-settings-memory canary subset must total 6; received ${canaryCount}.`,
+      `assistant-chat-settings-memory canary subset must total 8; received ${canaryCount}.`,
     );
   }
 }

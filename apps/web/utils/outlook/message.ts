@@ -6,7 +6,7 @@ import type { ParsedMessage, Attachment } from "@/utils/types";
 import type { OutlookClient } from "@/utils/outlook/client";
 import { OutlookLabel, WELL_KNOWN_FOLDERS } from "./constants";
 import { escapeODataString } from "@/utils/outlook/odata-escape";
-import { withOutlookRetry } from "@/utils/outlook/retry";
+import { withMicrosoftGraphRetry } from "@/utils/microsoft/retry";
 import { formatEmailWithName } from "@/utils/email";
 import type { Logger } from "@/utils/logger";
 import { isOutlookThrottlingError } from "@/utils/error";
@@ -14,8 +14,9 @@ import { resolveMicrosoftGraphNextLink } from "@/utils/outlook/page-token";
 
 // Standard fields to select when fetching messages from Microsoft Graph API
 // internetMessageId is the RFC 5322 Message-ID header, needed for cross-provider email threading
-export const MESSAGE_SELECT_FIELDS =
-  "id,conversationId,conversationIndex,internetMessageId,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,isDraft,isRead,body,categories,parentFolderId,hasAttachments,webLink";
+export const MESSAGE_LIST_SELECT_FIELDS =
+  "id,conversationId,conversationIndex,internetMessageId,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,isDraft,isRead,categories,parentFolderId,hasAttachments,webLink";
+export const MESSAGE_SELECT_FIELDS = `${MESSAGE_LIST_SELECT_FIELDS},body`;
 
 // contentId belongs to fileAttachment, so selecting it without this type cast
 // makes Graph reject the entire attachment collection query.
@@ -48,7 +49,7 @@ export async function getFolderIds(
 
   const wellKnownFolders = await Promise.all(
     entriesToFetch.map(async ([key, folderName]) => {
-      const response: { id?: string | null } = await withOutlookRetry(
+      const response: { id?: string | null } = await withMicrosoftGraphRetry(
         () =>
           client
             .getClient()
@@ -88,7 +89,7 @@ export async function getCategoryMap(
 
   try {
     const response: { value: Array<{ id?: string; displayName?: string }> } =
-      await withOutlookRetry(
+      await withMicrosoftGraphRetry(
         () => client.getClient().api("/me/outlook/masterCategories").get(),
         logger,
       );
@@ -507,7 +508,7 @@ export async function queryBatchMessages(
   const nextLink = resolveMicrosoftGraphNextLink(pageToken);
   if (nextLink) {
     const response: { value: Message[]; "@odata.nextLink"?: string } =
-      await withOutlookRetry(
+      await withMicrosoftGraphRetry(
         () => client.getClient().api(nextLink).get(),
         logger,
       );
@@ -570,7 +571,7 @@ export async function queryBatchMessages(
     request = request.search(effectiveSearchQuery!);
 
     const response: { value: Message[]; "@odata.nextLink"?: string } =
-      await withOutlookRetry(() => request.get(), logger);
+      await withMicrosoftGraphRetry(() => request.get(), logger);
 
     const filteredMessages = response.value.filter((message) => {
       if (folderId && message.parentFolderId !== folderId) return false;
@@ -630,7 +631,7 @@ export async function queryBatchMessages(
     }
 
     const response: { value: Message[]; "@odata.nextLink"?: string } =
-      await withOutlookRetry(() => request.get(), logger);
+      await withMicrosoftGraphRetry(() => request.get(), logger);
     const messages = await convertMessages(
       response.value,
       folderIds,
@@ -681,7 +682,7 @@ export async function queryMessagesWithFilters(
   const nextLink = resolveMicrosoftGraphNextLink(pageToken);
   if (nextLink) {
     const response: { value: Message[]; "@odata.nextLink"?: string } =
-      await withOutlookRetry(
+      await withMicrosoftGraphRetry(
         () => client.getClient().api(nextLink).get(),
         logger,
       );
@@ -737,7 +738,7 @@ export async function queryMessagesWithFilters(
   }
 
   const response: { value: Message[]; "@odata.nextLink"?: string } =
-    await withOutlookRetry(() => request.get(), logger);
+    await withMicrosoftGraphRetry(() => request.get(), logger);
 
   const messages = await convertMessages(
     response.value,
@@ -777,7 +778,7 @@ export async function queryMessagesWithAttachments(
   const nextLink = resolveMicrosoftGraphNextLink(options.pageToken);
   if (nextLink) {
     const response: { value: Message[]; "@odata.nextLink"?: string } =
-      await withOutlookRetry(
+      await withMicrosoftGraphRetry(
         () => client.getClient().api(nextLink).get(),
         logger,
       );
@@ -801,7 +802,7 @@ export async function queryMessagesWithAttachments(
     .filter("hasAttachments eq true");
 
   const response: { value: Message[]; "@odata.nextLink"?: string } =
-    await withOutlookRetry(() => request.get(), logger);
+    await withMicrosoftGraphRetry(() => request.get(), logger);
 
   // Sort in memory to avoid "restriction or sort order is too complex" error
   const sortedMessages = response.value.sort((a, b) => {
@@ -828,7 +829,7 @@ export async function getMessage(
   client: OutlookClient,
   logger: Logger,
 ): Promise<ParsedMessage> {
-  const message = await withOutlookRetry(
+  const message = await withMicrosoftGraphRetry(
     () => createMessageRequest(client, messageId).get(),
     logger,
   );
@@ -860,7 +861,7 @@ export async function getMessages(
   }
 
   const response: { value: Message[]; "@odata.nextLink"?: string } =
-    await withOutlookRetry(() => request.get(), logger);
+    await withMicrosoftGraphRetry(() => request.get(), logger);
 
   const [folderIds, categoryMap] = await Promise.all([
     getFolderIds(client, logger, { includeDrafts: false }),

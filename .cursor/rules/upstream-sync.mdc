@@ -1,0 +1,12 @@
+---
+description: Weekly full merge of upstream Inbox Zero into this fork
+alwaysApply: true
+---
+
+# Upstream sync
+
+- Remotes: `origin` = `elie222/inbox-zero`, `wellness` = `self-wellness/inbox-zero`.
+- Once a week, merge `origin/main` into `wellness/main` in full (mail UI, desktop, meetings, security).
+- Keep our Telegram draft-in-chat, HTML/Gmail signature, surgical typed edits, and Vercel/LLM deploy settings when resolving conflicts.
+- This is a git fork, not an npm package.
+- After conflicts are fixed, open a PR, merge, and deploy.

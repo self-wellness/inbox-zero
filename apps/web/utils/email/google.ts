@@ -90,6 +90,7 @@ import { getGmailSignatures } from "@/utils/gmail/signature-settings";
 import { withRateLimitRecording } from "@/utils/email/rate-limit";
 import { shouldSkipAutoDraft } from "@/utils/auto-draft";
 import { extractUniqueEmailAddresses } from "@/utils/email";
+import { getGmailMailboxSyncPage } from "@/utils/gmail/mailbox-sync";
 
 export class GmailProvider implements EmailProvider {
   readonly name = "google";
@@ -166,6 +167,7 @@ export class GmailProvider implements EmailProvider {
           id: label.id!,
           name: label.name!,
           type: label.type!,
+          color: label.color || undefined,
           threadsTotal: label.threadsTotal || undefined,
           labelListVisibility: label.labelListVisibility || undefined,
           messageListVisibility: label.messageListVisibility || undefined,
@@ -183,7 +185,9 @@ export class GmailProvider implements EmailProvider {
         id: label.id!,
         name: label.name!,
         type: label.type!,
+        color: label.color || undefined,
         threadsTotal: label.threadsTotal || undefined,
+        threadsUnread: label.threadsUnread || undefined,
       };
     } catch {
       return null;
@@ -197,6 +201,7 @@ export class GmailProvider implements EmailProvider {
       id: label.id!,
       name: label.name!,
       type: label.type!,
+      color: label.color || undefined,
       threadsTotal: label.threadsTotal || undefined,
       labelListVisibility: label.labelListVisibility || undefined,
       messageListVisibility: label.messageListVisibility || undefined,
@@ -1372,6 +1377,19 @@ export class GmailProvider implements EmailProvider {
     });
   }
 
+  async getMailboxSyncPage(options: {
+    after?: Date;
+    cursor?: string;
+    limit: number;
+  }) {
+    return getGmailMailboxSyncPage({
+      gmail: this.client,
+      accessToken: getAccessTokenFromClient(this.client),
+      logger: this.logger,
+      ...options,
+    });
+  }
+
   getAccessToken(): string {
     return getAccessTokenFromClient(this.client);
   }
@@ -1455,6 +1473,7 @@ export class GmailProvider implements EmailProvider {
     query?: ThreadsQuery;
     maxResults?: number;
     pageToken?: string;
+    messageFormat?: "full" | "metadata";
   }): Promise<{
     threads: EmailThread[];
     nextPageToken?: string;
@@ -1555,6 +1574,9 @@ export class GmailProvider implements EmailProvider {
         threadIds,
         getAccessTokenFromClient(this.client),
         this.logger,
+        options.messageFormat === "metadata"
+          ? { format: "metadata" }
+          : undefined,
       );
 
       const emailThreads: EmailThread[] = threads
@@ -1631,6 +1653,10 @@ export class GmailProvider implements EmailProvider {
 
   async getFolders() {
     this.logger.warn("Getting folders is not supported for Gmail");
+    return [];
+  }
+
+  async getFolderCounts() {
     return [];
   }
 

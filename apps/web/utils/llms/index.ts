@@ -1413,11 +1413,20 @@ function getLlmFallbackFailureCategory(
 }
 
 function shouldFallbackToNextModel(error: unknown): boolean {
+  const unwrappedError = (error as { error?: unknown })?.error ?? error;
+
   if (RetryError.isInstance(error) && isAiQuotaExceededError(error)) {
     return true;
   }
 
   if (isContentFilterRefusal(error)) return true;
+
+  if (
+    APICallError.isInstance(unwrappedError) &&
+    isInvalidAIModelError(unwrappedError)
+  ) {
+    return true;
+  }
 
   const llmErrorInfo = extractLLMErrorInfo(error);
   if (llmErrorInfo.retryable) return true;

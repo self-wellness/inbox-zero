@@ -34,6 +34,7 @@ export const LlmUseCase = {
   MeetingFollowUpDraft: "meeting-follow-up-draft",
   MeetingSummary: "meeting-summary",
   MeetingWebSearch: "meeting-web-search",
+  OnboardingChat: "onboarding-chat",
   ParseFilingReply: "parse-filing-reply",
   PersonaAnalysis: "persona-analysis",
   PromptToRules: "prompt-to-rules",
@@ -42,6 +43,7 @@ export const LlmUseCase = {
   ReplyMemorySelection: "reply-memory-selection",
   ReplyNudge: "reply-nudge",
   Summarise: "summarise",
+  TranslateEmail: "translate-email",
   WritingStyleAnalysis: "writing-style-analysis",
 } as const;
 
@@ -79,6 +81,7 @@ export const LLM_USE_CASE_MODEL_TYPES = {
   [LlmUseCase.MeetingFollowUpDraft]: "draft",
   [LlmUseCase.MeetingSummary]: "default",
   [LlmUseCase.MeetingWebSearch]: "economy",
+  [LlmUseCase.OnboardingChat]: "chat",
   [LlmUseCase.ParseFilingReply]: "economy",
   [LlmUseCase.PersonaAnalysis]: "economy",
   [LlmUseCase.PromptToRules]: "chat",
@@ -87,13 +90,13 @@ export const LLM_USE_CASE_MODEL_TYPES = {
   [LlmUseCase.ReplyMemorySelection]: "economy",
   [LlmUseCase.ReplyNudge]: "chat",
   [LlmUseCase.Summarise]: "default",
+  [LlmUseCase.TranslateEmail]: "economy",
   [LlmUseCase.WritingStyleAnalysis]: "default",
 } as const satisfies Record<LlmUseCase, ModelType>;
 
 export function getModelForUseCase(
   userAi: UserAIFields,
   useCase: LlmUseCase,
-  online = false,
 ): SelectModel {
-  return getModel(userAi, LLM_USE_CASE_MODEL_TYPES[useCase], online);
+  return getModel(userAi, LLM_USE_CASE_MODEL_TYPES[useCase]);
 }

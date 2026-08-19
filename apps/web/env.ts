@@ -269,6 +269,7 @@ const parsedEnv = createEnv({
     POSTHOG_FEEDBACK_SURVEY_ID: z.string().optional(),
     POSTHOG_FEEDBACK_SURVEY_QUESTION_ID: z.string().optional(),
     POSTHOG_LLM_EVALS_APPROVED_EMAILS: z.string().optional(),
+    FEEDBACK_WEBHOOK_URL: z.string().url().optional(),
 
     RECALL_API_KEY: z.string().optional(),
     RECALL_WEBHOOK_SECRET: z.string().optional(),
@@ -300,6 +301,7 @@ const parsedEnv = createEnv({
       .optional()
       .transform((value) => value?.split(",")),
     WEBHOOK_URL: z.string().optional(),
+    MCP_SERVER_URL_OVERRIDES: z.string().optional(),
     INTERNAL_API_URL: z.string().optional(),
     INTERNAL_API_KEY: z.string(),
     WHITELIST_FROM: z.string().optional(),
@@ -320,6 +322,13 @@ const parsedEnv = createEnv({
       ),
     // Mobile auth trusted origin, e.g. inboxzero://
     MOBILE_AUTH_ORIGIN: z.string().trim().min(1).optional(),
+    // Desktop Electron custom-scheme origin for system-browser OAuth return.
+    DESKTOP_AUTH_ORIGIN: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .default("inboxzero://"),
     AUTO_JOIN_ORGANIZATION_ENABLED: booleanString.optional().default(false),
     AUTO_ENABLE_ORG_ANALYTICS: booleanString.optional().default(false),
 
@@ -421,6 +430,7 @@ const parsedEnv = createEnv({
     NEXT_PUBLIC_SMART_FILING_ENABLED: booleanString.optional(),
     NEXT_PUBLIC_CLEANER_ENABLED: booleanString.optional(),
     NEXT_PUBLIC_DELETE_EMAIL_ACTION_ENABLED: booleanString.optional(),
+    NEXT_PUBLIC_INTEGRATION_ACTION_ENABLED: booleanString.optional(),
     NEXT_PUBLIC_BOOKING_LINKS_ENABLED: booleanString.optional(),
     NEXT_PUBLIC_EXTERNAL_API_ENABLED: booleanString.optional().default(false),
     NEXT_PUBLIC_AUTO_DRAFT_DISABLED: booleanString.optional(),
@@ -527,6 +537,8 @@ const parsedEnv = createEnv({
     NEXT_PUBLIC_CLEANER_ENABLED: process.env.NEXT_PUBLIC_CLEANER_ENABLED,
     NEXT_PUBLIC_DELETE_EMAIL_ACTION_ENABLED:
       process.env.NEXT_PUBLIC_DELETE_EMAIL_ACTION_ENABLED,
+    NEXT_PUBLIC_INTEGRATION_ACTION_ENABLED:
+      process.env.NEXT_PUBLIC_INTEGRATION_ACTION_ENABLED,
     NEXT_PUBLIC_BOOKING_LINKS_ENABLED:
       process.env.NEXT_PUBLIC_BOOKING_LINKS_ENABLED,
     NEXT_PUBLIC_EXTERNAL_API_ENABLED:
