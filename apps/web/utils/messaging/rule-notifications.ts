@@ -48,6 +48,7 @@ import { createEmailProvider } from "@/utils/email/provider";
 import { getFormattedSenderAddress } from "@/utils/email/get-formatted-sender-address";
 import { resolveActionAttachments } from "@/utils/ai/action-attachments";
 import { quotePlainTextContent } from "@/utils/email/quoted-plain-text";
+import { draftContentToMessageHtml } from "@/utils/email/append-account-signature";
 import { formatReplySubject } from "@/utils/email/subject";
 import { emailToContent } from "@/utils/mail";
 import {
@@ -1035,6 +1036,7 @@ async function sendDraftReplyFromNotification({
         bcc: context.bcc,
         subject: context.subject,
         content,
+        signature: context.executedRule.emailAccount.signature,
         formattedFrom,
         attachments: serializeMailAttachments(attachments),
       }),
@@ -1199,6 +1201,7 @@ export function buildNotificationReplySendBody({
   bcc,
   subject,
   content,
+  signature,
   formattedFrom,
   attachments,
 }: {
@@ -1209,6 +1212,7 @@ export function buildNotificationReplySendBody({
   bcc?: string | null;
   subject?: string | null;
   content: string;
+  signature?: string | null;
   formattedFrom?: string | null;
   attachments: Array<{
     filename: string;
@@ -1227,7 +1231,7 @@ export function buildNotificationReplySendBody({
     cc: cc ?? undefined,
     bcc: bcc ?? undefined,
     subject: subject || formatReplySubject(sourceMessage.headers.subject),
-    messageHtml: convertNewlinesToBr(escapeHtml(content)),
+    messageHtml: draftContentToMessageHtml(content, signature),
     ...(formattedFrom ? { from: formattedFrom } : {}),
     attachments,
   };
@@ -1575,6 +1579,7 @@ async function getNotificationContext(executedActionId: string) {
               id: true,
               userId: true,
               email: true,
+              signature: true,
               account: {
                 select: {
                   provider: true,
