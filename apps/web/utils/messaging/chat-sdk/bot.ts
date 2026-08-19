@@ -687,28 +687,23 @@ async function processMessagingAssistantMessage({
     });
 
     try {
-      const revisionAck = await tryReviseOpenMessagingDraftFromChat({
+      const revision = await tryReviseOpenMessagingDraftFromChat({
         emailAccount: emailAccountUser,
         messageText: context.messageText,
         logger: threadLogger,
       });
-      if (revisionAck) {
+      if (revision) {
         await prisma.chatMessage.create({
           data: {
             id: assistantMessageId,
             chat: { connect: { id: chat.id } },
             role: "assistant",
             parts: [
-              { type: "text", text: revisionAck },
+              { type: "text", text: revision.text },
             ] as Prisma.InputJsonValue,
           },
         });
-        await thread.post(
-          getMessagingAiGeneratedPostPayload({
-            provider: context.provider,
-            text: revisionAck,
-          }),
-        );
+        await thread.post(revision.card);
         return true;
       }
     } catch (error) {

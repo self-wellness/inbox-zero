@@ -2111,6 +2111,31 @@ function buildTerminalCard({
   });
 }
 
+export function buildMessagingDraftRevisionCard({
+  actionId,
+  recipient,
+  subject,
+  draftBody,
+}: {
+  actionId: string;
+  recipient: string;
+  subject: string | null;
+  draftBody: string;
+}): CardElement {
+  const subjectLine = subject?.trim();
+  return buildTelegramNotificationCard({
+    actionId,
+    content: {
+      title: "Updated draft",
+      summary: `Updated the reply to *${recipient}*${
+        subjectLine ? `\n*Subject:* ${subjectLine}` : ""
+      }`,
+      details: [`✍️ *Revised reply:*\n${draftBody}`],
+    },
+    openLink: null,
+  });
+}
+
 function buildTelegramNotificationCard({
   actionId,
   content,

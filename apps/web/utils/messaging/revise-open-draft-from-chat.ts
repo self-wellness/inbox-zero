@@ -1,12 +1,28 @@
+import type { CardElement } from "chat";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { Logger } from "@/utils/logger";
-import { reviseMessagingDraftBody } from "@/utils/ai/reply/revise-messaging-draft";
+import {
+  reviseMessagingDraftBody,
+  splitDraftBodyAndStoredSignature,
+} from "@/utils/ai/reply/revise-messaging-draft";
 import {
   draftCardDisplayRecipient,
   loadOpenMessagingDraftCards,
   resolveOpenDraftCardForUserMessage,
 } from "@/utils/messaging/open-draft-chat-context";
-import { updateOpenMessagingDraftFromChat } from "@/utils/messaging/rule-notifications";
+import {
+  buildMessagingDraftRevisionCard,
+  updateOpenMessagingDraftFromChat,
+} from "@/utils/messaging/rule-notifications";
+
+export type MessagingDraftRevisionResult = {
+  actionId: string;
+  draftBody: string;
+  recipient: string;
+  subject: string | null;
+  text: string;
+  card: CardElement;
+};
 
 export async function tryReviseOpenMessagingDraftFromChat({
   emailAccount,
@@ -16,7 +32,7 @@ export async function tryReviseOpenMessagingDraftFromChat({
   emailAccount: EmailAccountWithAI;
   messageText: string;
   logger: Logger;
-}): Promise<string | null> {
+}): Promise<MessagingDraftRevisionResult | null> {
   if (!messageText.trim()) return null;
 
   const cards = await loadOpenMessagingDraftCards(emailAccount.id);
@@ -47,11 +63,28 @@ export async function tryReviseOpenMessagingDraftFromChat({
     to: updated.to || card.to,
     subject: updated.subject || card.subject,
   });
+  const subject = updated.subject || card.subject;
+  const draftBody = splitDraftBodyAndStoredSignature(nextContent).body;
+  const text =
+    `Updated the draft to **${recipient}**.\n\n${draftBody}\n\n` +
+    "Tap Send reply when it looks right.";
 
   logger.info("Revised open messaging draft from chat", {
     executedActionId: card.id,
     messageId: card.messageId,
   });
 
-  return `Updated the draft to **${recipient}**. Tap Send reply on that card when it looks right.`;
+  return {
+    actionId: card.id,
+    draftBody,
+    recipient,
+    subject,
+    text,
+    card: buildMessagingDraftRevisionCard({
+      actionId: card.id,
+      recipient,
+      subject,
+      draftBody,
+    }),
+  };
 }
