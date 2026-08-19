@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendAccountSignature,
   draftContentToMessageHtml,
+  wrapAccountSignatureHtml,
 } from "@/utils/email/append-account-signature";
 
 describe("appendAccountSignature", () => {
@@ -36,6 +37,9 @@ describe("draftContentToMessageHtml", () => {
 
     expect(html).toContain("Yes, Tuesday still works.");
     expect(html).toContain("<br><br>");
+    expect(html).toContain('class="gmail_signature"');
+    expect(html).toContain('data-smartmail="gmail_signature"');
+    expect(html).toContain('x-apple-data-detectors="false"');
     expect(html).toContain('<div><b>Self.</b></div>');
     expect(html).toContain('<a href="https://self.io">Self.io</a>');
     expect(html).not.toContain("&lt;div");
@@ -49,5 +53,20 @@ describe("draftContentToMessageHtml", () => {
 
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain("<b>Self.</b>");
+  });
+});
+
+describe("wrapAccountSignatureHtml", () => {
+  it("wraps a bare signature so clients treat it as a signature block", () => {
+    const wrapped = wrapAccountSignatureHtml("<div>JULIAN JORGENSEN</div>");
+    expect(wrapped).toBe(
+      '<div class="gmail_signature" data-smartmail="gmail_signature" x-apple-data-detectors="false"><div>JULIAN JORGENSEN</div></div>',
+    );
+  });
+
+  it("does not wrap a signature that is already marked", () => {
+    const existing =
+      '<div class="gmail_signature" data-smartmail="gmail_signature">Self.</div>';
+    expect(wrapAccountSignatureHtml(existing)).toBe(existing);
   });
 });

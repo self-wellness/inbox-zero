@@ -42,8 +42,27 @@ export function draftContentToMessageHtml(
 
   const htmlBody = convertNewlinesToBr(escapeHtml(body));
   if (!sig) return htmlBody;
-  if (htmlBody.endsWith(sig) || htmlBody.includes(`<br><br>${sig}`)) {
+
+  const wrapped = wrapAccountSignatureHtml(sig);
+  if (htmlBody.endsWith(wrapped) || htmlBody.includes(`<br><br>${wrapped}`)) {
     return htmlBody;
   }
-  return `${htmlBody}<br><br>${sig}`;
+  return `${htmlBody}<br><br>${wrapped}`;
+}
+
+/**
+ * Mark the block as a Gmail signature so Apple Mail does not run data
+ * detectors on the name/phone (those show up as green contact chips).
+ */
+export function wrapAccountSignatureHtml(signature: string): string {
+  const sig = signature.trim();
+  if (!sig) return sig;
+  if (
+    /\bclass\s*=\s*["'][^"']*\bgmail_signature\b/i.test(sig) ||
+    /data-smartmail\s*=\s*["']gmail_signature["']/i.test(sig)
+  ) {
+    return sig;
+  }
+
+  return `<div class="gmail_signature" data-smartmail="gmail_signature" x-apple-data-detectors="false">${sig}</div>`;
 }
