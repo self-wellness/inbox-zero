@@ -22,10 +22,7 @@ import {
   type MessagingRouteTargetType,
 } from "@/generated/prisma/enums";
 import { generateMessagingLinkCode } from "@/utils/messaging/chat-sdk/link-code";
-import {
-  DRAFT_REPLY_ACTION_TYPES,
-  MESSAGING_CHANNEL_ACTION_TYPES,
-} from "@/utils/actions/draft-reply";
+import { MESSAGING_CHANNEL_ACTION_TYPES } from "@/utils/actions/draft-reply";
 import { env } from "@/env";
 import {
   getMessagingChannelReconnectMessage,
@@ -352,11 +349,6 @@ export const toggleRuleChannelAction = actionClient
           },
           select: {
             organizationRuleId: true,
-            actions: {
-              where: { type: { in: [...DRAFT_REPLY_ACTION_TYPES] } },
-              select: { id: true },
-              take: 1,
-            },
           },
         }),
         prisma.messagingChannel.findUnique({
@@ -392,15 +384,8 @@ export const toggleRuleChannelAction = actionClient
         throw new SafeError("Messaging channel not found");
       }
 
-      let actionType: ActionType =
+      const actionType: ActionType =
         requestedType ?? ActionType.NOTIFY_MESSAGING_CHANNEL;
-      const hasDraftReplyAction = (rule.actions?.length ?? 0) > 0;
-      if (
-        actionType === ActionType.DRAFT_MESSAGING_CHANNEL &&
-        !hasDraftReplyAction
-      ) {
-        actionType = ActionType.NOTIFY_MESSAGING_CHANNEL;
-      }
 
       if (enabled) {
         if (!isMessagingChannelOperational(channel)) {
@@ -436,6 +421,18 @@ export const toggleRuleChannelAction = actionClient
             messagingChannelEmailAccountId: emailAccountId,
           },
         });
+
+        // Chat is the approval surface. A leftover mailbox draft makes
+        // Apple Mail look half-replied and hides whether we already sent.
+        if (actionType === ActionType.DRAFT_MESSAGING_CHANNEL) {
+          await prisma.action.deleteMany({
+            where: {
+              ruleId,
+              emailAccountId,
+              type: ActionType.DRAFT_EMAIL,
+            },
+          });
+        }
       } else {
         await prisma.action.deleteMany({
           where: {

@@ -456,9 +456,16 @@ describe("toggleRuleChannelAction", () => {
         messagingChannelId: "channel-1",
       },
     });
+    expect(prisma.action.deleteMany).not.toHaveBeenCalledWith({
+      where: {
+        ruleId: "rule-1",
+        emailAccountId: "email-account-1",
+        type: "DRAFT_EMAIL",
+      },
+    });
   });
 
-  it("falls back to NOTIFY when the client requests DRAFT but the rule has no draft action", async () => {
+  it("honors an explicit DRAFT request even when the rule has no mailbox draft", async () => {
     prisma.rule.findUnique.mockResolvedValue({
       emailAccountId: "email-account-1",
       actions: [],
@@ -490,9 +497,16 @@ describe("toggleRuleChannelAction", () => {
       data: {
         emailAccountId: "email-account-1",
         messagingChannelEmailAccountId: "email-account-1",
-        type: "NOTIFY_MESSAGING_CHANNEL",
+        type: "DRAFT_MESSAGING_CHANNEL",
         ruleId: "rule-1",
         messagingChannelId: "channel-1",
+      },
+    });
+    expect(prisma.action.deleteMany).toHaveBeenCalledWith({
+      where: {
+        ruleId: "rule-1",
+        emailAccountId: "email-account-1",
+        type: "DRAFT_EMAIL",
       },
     });
   });
@@ -534,6 +548,13 @@ describe("toggleRuleChannelAction", () => {
         messagingChannelId: "channel-1",
       },
     });
+    expect(prisma.action.deleteMany).toHaveBeenCalledWith({
+      where: {
+        ruleId: "rule-1",
+        emailAccountId: "email-account-1",
+        type: "DRAFT_EMAIL",
+      },
+    });
   });
 
   it("creates DRAFT_MESSAGING_CHANNEL when the rule already drafts to another chat channel", async () => {
@@ -573,15 +594,6 @@ describe("toggleRuleChannelAction", () => {
       },
       select: {
         organizationRuleId: true,
-        actions: {
-          where: {
-            type: {
-              in: ["DRAFT_EMAIL", "DRAFT_MESSAGING_CHANNEL"],
-            },
-          },
-          select: { id: true },
-          take: 1,
-        },
       },
     });
     expect(prisma.action.create).toHaveBeenCalledWith({
@@ -591,6 +603,13 @@ describe("toggleRuleChannelAction", () => {
         type: "DRAFT_MESSAGING_CHANNEL",
         ruleId: "rule-1",
         messagingChannelId: "telegram-channel-1",
+      },
+    });
+    expect(prisma.action.deleteMany).toHaveBeenCalledWith({
+      where: {
+        ruleId: "rule-1",
+        emailAccountId: "email-account-1",
+        type: "DRAFT_EMAIL",
       },
     });
   });
