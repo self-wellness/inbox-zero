@@ -666,13 +666,15 @@ function RuleToggle({
   const enabled = currentActionType !== null;
   const isDraft = currentActionType === "DRAFT_MESSAGING_CHANNEL";
 
-  // Smart default: if the rule already has a DRAFT_EMAIL action, default to draft mode
-  const hasDraftEmailAction = rule.actions.some(
-    (a) => a.type === "DRAFT_EMAIL",
+  // Smart default: draft-in-chat when the rule already drafts, or To Reply
+  // (mailbox DRAFT_EMAIL is removed once Telegram draft is enabled).
+  const hasDraftReplyAction = rule.actions.some(
+    (a) => a.type === "DRAFT_EMAIL" || a.type === "DRAFT_MESSAGING_CHANNEL",
   );
-  const defaultActionType: MessagingActionType = hasDraftEmailAction
-    ? "DRAFT_MESSAGING_CHANNEL"
-    : "NOTIFY_MESSAGING_CHANNEL";
+  const defaultActionType: MessagingActionType =
+    hasDraftReplyAction || rule.systemType === "TO_REPLY"
+      ? "DRAFT_MESSAGING_CHANNEL"
+      : "NOTIFY_MESSAGING_CHANNEL";
 
   const { execute, status } = useAction(
     toggleRuleChannelAction.bind(null, emailAccountId),
