@@ -1008,6 +1008,36 @@ describe("buildNotificationReplySendBody", () => {
       }),
     );
   });
+
+  it("sends the account signature as HTML instead of escaped tags", async () => {
+    const { buildNotificationReplySendBody } = await import(
+      "./rule-notifications"
+    );
+    const signature =
+      '<div dir="ltr"><b>Self.</b><br>JULIAN JORGENSEN</div>';
+
+    const body = buildNotificationReplySendBody({
+      sourceMessage: {
+        id: "message-1",
+        threadId: "thread-1",
+        headers: {
+          from: "sender@example.com",
+          to: "user@example.com",
+          subject: "Test subject",
+          date: "Mon, 1 Jan 2024 11:00:00 +0000",
+          "message-id": "<message-1@example.com>",
+        },
+      } as ParsedMessage,
+      fallbackThreadId: "thread-1",
+      content: `Yes, Tuesday still works.\n\n${signature}`,
+      signature,
+      attachments: [],
+    });
+
+    expect(body.messageHtml).toContain("Yes, Tuesday still works.");
+    expect(body.messageHtml).toContain("<b>Self.</b>");
+    expect(body.messageHtml).not.toContain("&lt;div");
+  });
 });
 
 describe("sendMessagingRuleNotification", () => {
