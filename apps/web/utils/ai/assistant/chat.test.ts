@@ -102,6 +102,9 @@ describe("buildResolvedSystemPrompt drafting guidance", () => {
 
     expect(prompt).toMatch(/draft knowledge base/i);
     expect(prompt).toMatch(/writing style/i);
+    expect(prompt).toMatch(/open chat draft cards/i);
+    expect(prompt).toMatch(/most recently posted open draft card/i);
+    expect(prompt).toMatch(/only the requested change/i);
   });
 });
 

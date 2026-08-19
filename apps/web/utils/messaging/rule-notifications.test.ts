@@ -1013,8 +1013,7 @@ describe("buildNotificationReplySendBody", () => {
     const { buildNotificationReplySendBody } = await import(
       "./rule-notifications"
     );
-    const signature =
-      '<div dir="ltr"><b>Self.</b><br>JULIAN JORGENSEN</div>';
+    const signature = '<div dir="ltr"><b>Self.</b><br>JULIAN JORGENSEN</div>';
 
     const body = buildNotificationReplySendBody({
       sourceMessage: {
@@ -1096,6 +1095,8 @@ describe("sendMessagingRuleNotification", () => {
         messagingMessageId: "slack-ts-1",
         messagingMessageSentAt: expect.any(Date),
         messagingMessageStatus: MessagingMessageStatus.SENT,
+        to: "sender@example.com",
+        subject: "Test subject",
       },
     });
   });
@@ -1911,6 +1912,8 @@ describe("sendMessagingRuleNotification", () => {
         messagingMessageId: "telegram-message-1",
         messagingMessageSentAt: expect.any(Date),
         messagingMessageStatus: MessagingMessageStatus.SENT,
+        to: "sender@example.com",
+        subject: "Test subject",
       },
     });
   });

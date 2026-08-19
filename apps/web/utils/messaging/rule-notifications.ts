@@ -448,6 +448,8 @@ async function sendSlackRuleNotificationWithContext({
         messagingMessageId: responseTs ?? rootMessageId ?? null,
         messagingMessageSentAt: new Date(),
         messagingMessageStatus: MessagingMessageStatus.SENT,
+        to: email.headers.from,
+        subject: email.headers.subject,
       },
     });
     return { delivered: true, kind: "interactive" };
@@ -542,6 +544,12 @@ async function sendLinkedRuleNotification({
         messagingMessageId: response.messageId ?? response.channelId ?? null,
         messagingMessageSentAt: new Date(),
         messagingMessageStatus: MessagingMessageStatus.SENT,
+        ...(isDraftReplyActionType(context.type)
+          ? {
+              to: email.headers.from,
+              subject: email.headers.subject,
+            }
+          : {}),
       },
     });
     return { delivered: true, kind: "view_only" };
@@ -657,6 +665,8 @@ async function sendTelegramRuleNotificationWithContext({
         messagingMessageId: response.id ?? threadId,
         messagingMessageSentAt: new Date(),
         messagingMessageStatus: MessagingMessageStatus.SENT,
+        to: email.headers.from,
+        subject: email.headers.subject,
       },
     });
     return { delivered: true, kind: "interactive" };
@@ -847,6 +857,132 @@ export async function handleSlackRuleNotificationModalSubmit({
   }
 
   return { action: "close" };
+}
+
+export async function updateOpenMessagingDraftFromChat({
+  executedActionId,
+  nextContent,
+  logger,
+}: {
+  executedActionId: string;
+  nextContent: string;
+  logger: Logger;
+}): Promise<{ to: string | null; subject: string | null } | null> {
+  const context = await getNotificationContext(executedActionId);
+  if (!context || !canEditDraft(context.messagingMessageStatus)) {
+    return null;
+  }
+
+  const mailboxDraftAction = getMailboxDraftActionForMessagingDraft(context);
+
+  await prisma.executedAction.update({
+    where: { id: context.id },
+    data: {
+      content: nextContent,
+      messagingMessageStatus: MessagingMessageStatus.DRAFT_EDITED,
+    },
+  });
+  if (mailboxDraftAction?.id && mailboxDraftAction.id !== context.id) {
+    await prisma.executedAction.update({
+      where: { id: mailboxDraftAction.id },
+      data: { content: nextContent },
+    });
+  }
+
+  try {
+    await refreshPostedDraftNotificationCard({
+      context: { ...context, content: nextContent },
+      logger,
+    });
+  } catch (error) {
+    logger.warn("Failed to refresh messaging draft card after chat edit", {
+      executedActionId: context.id,
+      error,
+    });
+  }
+
+  return {
+    to: context.to,
+    subject: context.subject,
+  };
+}
+
+async function refreshPostedDraftNotificationCard({
+  context,
+  logger,
+}: {
+  context: NotificationContext;
+  logger: Logger;
+}) {
+  if (!context.messagingMessageId || !context.messagingChannel) return;
+
+  const provider = await createProviderForContext(context, logger);
+  const sourceMessageSummary = await getSourceMessageSummaryForProvider({
+    context,
+    provider,
+  });
+  const draftAttachmentNames = getNotificationDraftAttachmentNames({
+    context,
+    logger,
+  });
+  const content = buildNotificationContent({
+    actionType: context.type,
+    email: sourceMessageSummary,
+    systemType: context.executedRule.rule?.systemType ?? null,
+    draftContent: context.content,
+    draftAttachmentNames,
+    format:
+      context.messagingChannel.provider === MessagingProvider.SLACK
+        ? "slack"
+        : "plain",
+  });
+  const openLink = getNotificationOpenLink(context);
+  const card =
+    context.messagingChannel.provider === MessagingProvider.TELEGRAM
+      ? buildTelegramNotificationCard({
+          actionId: context.id,
+          content,
+          openLink,
+        })
+      : buildNotificationCard({
+          actionId: context.id,
+          actionType: context.type,
+          content,
+          openLink,
+        });
+
+  switch (context.messagingChannel.provider) {
+    case MessagingProvider.SLACK: {
+      await updateStoredSlackNotificationMessage({
+        context,
+        logger,
+        card,
+      });
+      return;
+    }
+    case MessagingProvider.TELEGRAM: {
+      const route = getMessagingRoute(
+        context.messagingChannel.routes,
+        MessagingRoutePurpose.RULE_NOTIFICATIONS,
+      );
+      const destination = route?.targetId || context.messagingChannel.teamId;
+      if (!destination) return;
+
+      const telegramAdapter =
+        getMessagingAdapterRegistry().typedAdapters.telegram;
+      if (!telegramAdapter) return;
+
+      const threadId = await telegramAdapter.openDM(destination);
+      await telegramAdapter.editMessage(
+        threadId,
+        context.messagingMessageId,
+        card,
+      );
+      return;
+    }
+    default:
+      return;
+  }
 }
 
 function getRuleNotificationActionSelection(event: ActionEvent): {
