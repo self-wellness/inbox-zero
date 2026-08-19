@@ -2277,6 +2277,30 @@ describe("sendMessagingRuleNotification", () => {
   });
 });
 
+describe("buildMessagingDraftRevisionCard", () => {
+  it("shows the revised draft and send button in the new Telegram card", async () => {
+    const { buildMessagingDraftRevisionCard } = await import(
+      "./rule-notifications"
+    );
+
+    const card = buildMessagingDraftRevisionCard({
+      actionId: "action-1",
+      recipient: "Alex Test",
+      subject: "[IZ TEST] Draft edit bind",
+      draftBody:
+        "Yes, please ship with PostNord and use +45 53 33 13 49 on the label.",
+    });
+    const serialized = JSON.stringify(card);
+
+    expect(serialized).toContain("Updated draft");
+    expect(serialized).toContain("Alex Test");
+    expect(serialized).toContain("PostNord");
+    expect(serialized).toContain("Send reply");
+    expect(serialized).toContain("Dismiss");
+    expect(serialized).not.toContain("Edit draft");
+  }, 15_000);
+});
+
 describe("buildMessagingRuleNotificationText", () => {
   it("adds a Telegram-specific draft caveat for Telegram fallbacks", async () => {
     const { buildMessagingRuleNotificationText } = await import(
